@@ -1,0 +1,61 @@
+# wazuh-swarm.yml
+version: "3.9"
+
+networks:
+  wazuh-net:
+    external: true  # created by the GitHub Actions job
+
+volumes:
+  wazuh-indexer-data:
+  wazuh-manager-data:
+  wazuh-dashboard-data:
+
+services:
+  wazuh-indexer:
+    image: wazuh/wazuh-indexer:4.12.0
+    ports:
+      - target: 9200
+        published: 9200
+        protocol: tcp
+        mode: ingress
+    volumes:
+      - wazuh-indexer-data:/var/lib/wazuh-indexer
+    networks: [wazuh-net]
+    deploy:
+      replicas: 1
+
+  wazuh-manager:
+    image: wazuh/wazuh-manager:4.12.0
+    ports:
+      - target: 1515
+        published: 1515
+        protocol: tcp
+        mode: ingress
+      - target: 1514
+        published: 1514
+        protocol: udp
+        mode: ingress
+      - target: 55000
+        published: 55000
+        protocol: tcp
+        mode: ingress
+    volumes:
+      - wazuh-manager-data:/var/ossec/data
+    networks: [wazuh-net]
+    deploy:
+      replicas: 1
+
+  wazuh-dashboard:
+    image: wazuh/wazuh-dashboard:4.12.0
+    environment:
+      SERVER_SSL_ENABLED: "false"
+    ports:
+      - target: 5601
+        published: 5601
+        protocol: tcp
+        mode: ingress
+    volumes:
+      - wazuh-dashboard-data:/usr/share/wazuh-dashboard/data
+    networks: [wazuh-net]
+    deploy:
+      replicas: 1
