@@ -6,8 +6,12 @@ jobs:
       - codebuild-wazuh-runner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - run: echo "Hello World"
+      - name: Setup SSH key
+        run: |
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > id_rsa
+          chmod 600 id_rsa
       - name: SSH into the swarm server
-        run: ssh -i ${{secrets.SSH_PUBLIC_KEY}} root@IP
+        run: ssh -i id_rsa root@IP
 
       - name: Run WHOAMI
         run: whoami
