@@ -27,4 +27,4 @@ jobs:
               root@13.51.170.18
 
       - name: Run WHOAMI
-        run: whoami
+        run: cat /root/test.txt
