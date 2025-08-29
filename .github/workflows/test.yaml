@@ -11,7 +11,7 @@ jobs:
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > id_rsa
           chmod 600 id_rsa
       - name: SSH into the swarm server
-        run: ssh -i id_rsa root@IP
+        run: ssh -i id_rsa root@13.51.170.18
 
       - name: Run WHOAMI
         run: whoami
