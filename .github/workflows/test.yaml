@@ -26,5 +26,10 @@ jobs:
               -o UserKnownHostsFile=~/.ssh/known_hosts \
               root@13.51.170.18
 
-      - name: Run WHOAMI
-        run: pwd && whoami && ls /home
+      - name: Verify SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="$(ssh -i ~/.ssh/id_rsa -o BatchMode=yes -o UserKnownHostsFile=~/.ssh/known_hosts -T root@13.51.170.18 'echo SSH_OK && whoami && hostname')"
+          echo "$OUT"
+          echo "$OUT" | grep -qx 'SSH_OK'
