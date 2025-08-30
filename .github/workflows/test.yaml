@@ -1,35 +1,148 @@
-name: Hello World
-on: [push]
+# .github/workflows/wazuh-remote-swarm.yml
+name: Wazuh Swarm (remote SSH)
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "stack/**"
+      - ".github/workflows/**"
+  workflow_dispatch:
+    inputs:
+      wazuh_tag:
+        description: "wazuh/wazuh-docker tag (e.g., v4.12.0)"
+        default: "v4.12.0"
+        required: false
+      stack_file:
+        description: "Optional overrides file in this repo"
+        default: "stack/wazuh-swarm.yml"
+        required: false
+
+env:
+  WAZUH_TAG: ${{ inputs.wazuh_tag || 'v4.12.0' }}
+  STACK_FILE: ${{ inputs.stack_file || 'stack/wazuh-swarm.yml' }}
+  REMOTE_BASE: /opt/wazuh
+  # --- adapt these to secrets/vars in your repo ---
+  SWARM_HOST: ${{ vars.SWARM_HOST || '56.228.11.176' }}   # move to repo var/secret
+  SWARM_USER: ${{ vars.SWARM_USER || 'ec2-user' }}
+
 jobs:
-  Hello-World-Job:
-    runs-on:
-      - codebuild-wazuh-runner-${{ github.run_id }}-${{ github.run_attempt }}
+  deploy:
+    # If you really want your custom CodeBuild runner label, uncomment next line
+    runs-on: codebuild-wazuh-runner-${{ github.run_id }}-${{ github.run_attempt }}
+
     steps:
-      - run: echo "Hello World"
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Hello World
+        run: echo "Hello World"
+
       - name: Write private key
         shell: bash
         run: |
           mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
           printf '%s\n' "${{ secrets.AWS_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+
       - name: Trust server host key (pin it)
         shell: bash
         run: |
           mkdir -p ~/.ssh
-          ssh-keyscan -H 13.51.170.18 >> ~/.ssh/known_hosts
-
-      - name: SSH
-        shell: bash
-        run: |
-          ssh -i ~/.ssh/id_rsa \
-              -o IdentitiesOnly=yes \
-              -o UserKnownHostsFile=~/.ssh/known_hosts \
-              root@13.51.170.18
+          # Prefer storing an exact key in a secret KNOWN_HOSTS. If absent, fall back to ssh-keyscan.
+          if [ -n "${{ secrets.KNOWN_HOSTS }}" ]; then
+            printf '%s\n' "${{ secrets.KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "${{ env.SWARM_HOST }}" >> ~/.ssh/known_hosts
+          fi
+          chmod 600 ~/.ssh/known_hosts
 
       - name: Verify SSH
         shell: bash
         run: |
           set -euo pipefail
-          OUT="$(ssh -i ~/.ssh/id_rsa -o BatchMode=yes -o UserKnownHostsFile=~/.ssh/known_hosts -T root@13.51.170.18 'echo SSH_OK && whoami && hostname')"
+          OUT="$(ssh -i ~/.ssh/id_rsa -o BatchMode=yes -o UserKnownHostsFile=~/.ssh/known_hosts -T ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }} 'echo SSH_OK && whoami && hostname')"
           echo "$OUT"
           echo "$OUT" | grep -qx 'SSH_OK'
+
+      - name: Fetch official Wazuh multi-node configs at tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/wazuh-docker
+          git clone --depth 1 --branch "${{ env.WAZUH_TAG }}" https://github.com/wazuh/wazuh-docker /tmp/wazuh-docker
+          tar czf /tmp/wazuh-multi-node.tgz -C /tmp/wazuh-docker multi-node
+
+      - name: (Optional) Check for local overrides file
+        id: have_overrides
+        shell: bash
+        run: |
+          if [ -f "${{ env.STACK_FILE }}" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload artifacts to remote
+        shell: bash
+        run: |
+          set -euo pipefail
+          scp -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            /tmp/wazuh-multi-node.tgz \
+            ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }}:${{ env.REMOTE_BASE }}/
+          if [ "${{ steps.have_overrides.outputs.present }}" = "true" ]; then
+            scp -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+              "${{ env.STACK_FILE }}" \
+              ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }}:${{ env.REMOTE_BASE }}/wazuh-swarm.overrides.yml
+          fi
+
+      - name: Prepare host, generate certs, and deploy stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }} /bin/bash <<'REMOTE'
+          set -euo pipefail
+          REMOTE_BASE="${{ env.REMOTE_BASE }}"
+          mkdir -p "$REMOTE_BASE"
+          cd "$REMOTE_BASE"
+
+          # Unpack official multi-node configs
+          tar xzf wazuh-multi-node.tgz
+
+          # Ensure Swarm is initialized (no-op if already active)
+          if [ "$(docker info -f '{{.Swarm.LocalNodeState}}')" = "inactive" ]; then
+            docker swarm init
+          fi
+
+          # Kernel prerequisite for OpenSearch
+          # NOTE: do this on every node that will run indexers, not just the manager.
+          echo "vm.max_map_count=262144" | tee /etc/sysctl.d/99-opensearch.conf >/dev/null
+          sysctl -w vm.max_map_count=262144
+
+          # Compose CLI shim
+          if docker compose version >/dev/null 2>&1; then
+            COMPOSE="docker compose"
+          else
+            COMPOSE="docker-compose"
+          fi
+
+          # Generate cluster certs (official generator)
+          cd "$REMOTE_BASE/multi-node"
+          $COMPOSE -f generate-indexer-certs.yml run --rm generator
+
+          # Merge upstream compose with optional overrides into a Swarm-ready file
+          OV="-f docker-compose.yml"
+          if [ -f "$REMOTE_BASE/wazuh-swarm.overrides.yml" ]; then
+            OV="$OV -f $REMOTE_BASE/wazuh-swarm.overrides.yml"
+          fi
+          # docker stack doesn't accept multiple -c with env interpolation reliably; pre-merge:
+          $COMPOSE $OV config > "$REMOTE_BASE/stack.merged.yml"
+
+          # Deploy/Update stack
+          docker stack deploy -c "$REMOTE_BASE/stack.merged.yml" wazuh
+
+          # Show service state
+          docker stack services wazuh || true
+          docker service ls --format 'table {{.Name}}\t{{.Mode}}\t{{.Replicas}}\t{{.Image}}' || true
+          REMOTE
