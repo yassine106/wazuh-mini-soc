@@ -97,52 +97,84 @@ jobs:
               ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }}:${{ env.REMOTE_BASE }}/wazuh-swarm.overrides.yml
           fi
 
-      - name: Prepare host, generate certs, and deploy stack
+# 1) PREP: create remote dir and unpack official multi-node configs
+      - name: Remote — prepare dir & unpack configs
         shell: bash
         run: |
-          set -euo pipefail
-          ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }} /bin/bash <<'REMOTE'
-          set -euo pipefail
-          REMOTE_BASE="${{ env.REMOTE_BASE }}"
-          mkdir -p "$REMOTE_BASE"
-          cd "$REMOTE_BASE"
+          ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }} '
+            set -euo pipefail
+            REMOTE_BASE="${{ env.REMOTE_BASE }}"
+            mkdir -p "$REMOTE_BASE"
+            cd "$REMOTE_BASE"
+            rm -rf "$REMOTE_BASE/multi-node" || true
+            tar xzf "$REMOTE_BASE/wazuh-multi-node.tgz"
+          '
 
-          # Unpack official multi-node configs
-          tar xzf wazuh-multi-node.tgz
+      # 2) SWARM: init if inactive (idempotent)
+      - name: Remote — init Docker Swarm if needed
+        shell: bash
+        run: |
+          ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }} '
+            set -euo pipefail
+            if [ "$(docker info -f "{{.Swarm.LocalNodeState}}")" = "inactive" ]; then
+              docker swarm init
+            fi
+          '
 
-          # Ensure Swarm is initialized (no-op if already active)
-          if [ "$(docker info -f '{{.Swarm.LocalNodeState}}')" = "inactive" ]; then
-            docker swarm init
-          fi
+      # 3) HOST SETTINGS: satisfy OpenSearch requirement
+      - name: Remote — set vm.max_map_count=262144
+        shell: bash
+        run: |
+          ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }} '
+            set -euo pipefail
+            sudo echo "vm.max_map_count=262144" > /etc/sysctl.d/99-opensearch.conf
+            sudo sysctl -w vm.max_map_count=262144
+          '
 
-          # Kernel prerequisite for OpenSearch
-          # NOTE: do this on every node that will run indexers, not just the manager.
-          echo "vm.max_map_count=262144" | sudo tee /etc/sysctl.d/99-opensearch.conf >/dev/null
-          sudo sysctl -w vm.max_map_count=262144
+      # 4) CERTS: run the official generator BEFORE any deploy
+      - name: Remote — generate Wazuh cluster certs
+        shell: bash
+        run: |
+          ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }} '
+            set -euo pipefail
+            REMOTE_BASE="${{ env.REMOTE_BASE }}"
+            cd "$REMOTE_BASE/multi-node"
+            if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE="docker-compose"; fi
+            $COMPOSE -f generate-indexer-certs.yml run --rm generator
+          '
 
-          # Compose CLI shim
-          if docker compose version >/dev/null 2>&1; then
-            COMPOSE="docker compose"
-          else
-            COMPOSE="docker-compose"
-          fi
+      # 5) MERGE: upstream compose + optional overrides -> single file
+      - name: Remote — pre-merge compose files
+        shell: bash
+        run: |
+          ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }} '
+            set -euo pipefail
+            REMOTE_BASE="${{ env.REMOTE_BASE }}"
+            cd "$REMOTE_BASE/multi-node"
+            if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE="docker-compose"; fi
+            OV="-f docker-compose.yml"
+            if [ -f "$REMOTE_BASE/wazuh-swarm.overrides.yml" ]; then
+              OV="$OV -f $REMOTE_BASE/wazuh-swarm.overrides.yml"
+            fi
+            $COMPOSE $OV config > "$REMOTE_BASE/stack.merged.yml"
+          '
 
-          # Generate cluster certs (official generator)
-          cd "$REMOTE_BASE/multi-node"
-          $COMPOSE -f generate-indexer-certs.yml run --rm generator
+      # 6) DEPLOY: Swarm stack (idempotent updates)
+      - name: Remote — deploy/update stack
+        shell: bash
+        run: |
+          ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }} '
+            set -euo pipefail
+            REMOTE_BASE="${{ env.REMOTE_BASE }}"
+            docker stack deploy -c "$REMOTE_BASE/stack.merged.yml" wazuh
+          '
 
-          # Merge upstream compose with optional overrides into a Swarm-ready file
-          OV="-f docker-compose.yml"
-          if [ -f "$REMOTE_BASE/wazuh-swarm.overrides.yml" ]; then
-            OV="$OV -f $REMOTE_BASE/wazuh-swarm.overrides.yml"
-          fi
-          # docker stack doesn't accept multiple -c with env interpolation reliably; pre-merge:
-          $COMPOSE $OV config > "$REMOTE_BASE/stack.merged.yml"
-
-          # Deploy/Update stack
-          docker stack deploy -c "$REMOTE_BASE/stack.merged.yml" wazuh
-
-          # Show service state
-          docker stack services wazuh || true
-          docker service ls --format 'table {{.Name}}\t{{.Mode}}\t{{.Replicas}}\t{{.Image}}' || true
-          REMOTE
+      # 7) POST: show service state
+      - name: Remote — show service state
+        shell: bash
+        run: |
+          ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }} '
+            set -euo pipefail
+            docker stack services wazuh || true
+            docker service ls --format "table {{.Name}}\t{{.Mode}}\t{{.Replicas}}\t{{.Image}}" || true
+          '
