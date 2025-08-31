@@ -8,23 +8,13 @@ on:
       - ".github/workflows/**"
       - "stack/**"          # where your stack-wazuh.yml lives in THIS repo
   workflow_dispatch:
-    inputs:
-      wazuh_tag:
-        description: "wazuh/wazuh-docker tag (e.g., v4.12.0)"
-        default: "v4.12.0"
-        required: false
-      stack_src:
-        description: "Path to your stack file in this repo (uploaded to multi-node/)"
-        default: "stack/stack-wazuh.yml"
-        required: false
-
+    
 env:
-  WAZUH_TAG: ${{ inputs.wazuh_tag || 'v4.12.0' }}
-  STACK_SRC: ${{ inputs.stack_src || 'stack/stack-wazuh.yml' }}
-  REMOTE_BASE: /opt/wazuh
-  SWARM_HOST: ${{ vars.SWARM_HOST || '3.92.21.45' }} # move to repo var/secret
-  SWARM_USER: ${{ vars.SWARM_USER || 'ec2-user' }}
-
+  WAZUH_TAG: v4.12.0
+  STACK_SRC: stack/stack-wazuh.yml
+  REMOTE_BASE: /home/ec2-user/wazuh
+  SWARM_HOST: 3.92.21.45
+  SWARM_USER: ec2-user
 jobs:
   deploy:
     # If you have a custom CodeBuild runner label, swap this:
@@ -94,7 +84,7 @@ jobs:
           # Ensure base exists and multi-node is unpacked before copying
           ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
             ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }} \
-            "set -euo pipefail; mkdir -p '${{ env.REMOTE_BASE }}'; cd '${{ env.REMOTE_BASE }}'; sudo rm -rf multi-node; tar xzf wazuh-multi-node.tgz"
+            "set -euo pipefail; cd '${{ env.REMOTE_BASE }}'; sudo rm -rf multi-node; tar xzf wazuh-multi-node.tgz"
           scp -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
             "${{ env.STACK_SRC }}" \
             ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }}:${{ env.REMOTE_BASE }}/multi-node/stack-wazuh.yml
