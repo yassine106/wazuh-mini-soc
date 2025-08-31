@@ -8,13 +8,15 @@ def driver():
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--ignore-certificate-errors")  # <-- ignore self-signed SSL
     driver = webdriver.Chrome(options=options)
     yield driver
     driver.quit()
 
 def test_dashboard_reachable(driver):
     driver.get("https://3.92.21.45")
-    assert "Wazuh" in driver.title
+    WebDriverWait(driver, 10).until(
+    assert "Wazuh" in driver.title)
 
 def test_login_form_present(driver):
     driver.get("https://3.92.21.45/app/login")
