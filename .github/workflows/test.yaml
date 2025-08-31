@@ -1,35 +1,35 @@
 # .github/workflows/wazuh-remote-swarm.yml
-name: Wazuh Swarm (remote SSH)
+name: Wazuh Swarm (remote SSH, multi-node & custom stack file)
 
 on:
   push:
     branches: [ main ]
     paths:
-      - "stack/**"
       - ".github/workflows/**"
+      - "stack/**"          # where your stack-wazuh.yml lives in THIS repo
   workflow_dispatch:
     inputs:
       wazuh_tag:
         description: "wazuh/wazuh-docker tag (e.g., v4.12.0)"
         default: "v4.12.0"
         required: false
-      stack_file:
-        description: "Optional overrides file in this repo"
-        default: "stack/wazuh-swarm.yml"
+      stack_src:
+        description: "Path to your stack file in this repo (uploaded to multi-node/)"
+        default: "stack/stack-wazuh.yml"
         required: false
 
 env:
   WAZUH_TAG: ${{ inputs.wazuh_tag || 'v4.12.0' }}
-  STACK_FILE: ${{ inputs.stack_file || 'stack/wazuh-stack.yaml' }}
+  STACK_SRC: ${{ inputs.stack_src || 'stack/stack-wazuh.yml' }}
   REMOTE_BASE: /opt/wazuh
-  # --- adapt these to secrets/vars in your repo ---
-  SWARM_HOST: ${{ vars.SWARM_HOST || '56.228.11.176' }}   # move to repo var/secret
+  SWARM_HOST: ${{ vars.SWARM_HOST || '56.228.11.176' }} # move to repo var/secret
   SWARM_USER: ${{ vars.SWARM_USER || 'ec2-user' }}
 
 jobs:
   deploy:
-    # If you really want your custom CodeBuild runner label, uncomment next line
-    runs-on: codebuild-wazuh-runner-${{ github.run_id }}-${{ github.run_attempt }}
+    # If you have a custom CodeBuild runner label, swap this:
+    # runs-on: codebuild-wazuh-runner-${{ github.run_id }}-${{ github.run_attempt }}
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repo
@@ -50,7 +50,6 @@ jobs:
         shell: bash
         run: |
           mkdir -p ~/.ssh
-          # Prefer storing an exact key in a secret KNOWN_HOSTS. If absent, fall back to ssh-keyscan.
           if [ -n "${{ secrets.KNOWN_HOSTS }}" ]; then
             printf '%s\n' "${{ secrets.KNOWN_HOSTS }}" > ~/.ssh/known_hosts
           else
@@ -66,7 +65,9 @@ jobs:
           echo "$OUT"
           echo "$OUT" | grep -qx 'SSH_OK'
 
-      - name: Fetch official Wazuh multi-node configs at tag
+      # --- Pull upstream multi-node and ship it ---
+
+      - name: Fetch official Wazuh multi-node at tag
         shell: bash
         run: |
           set -euo pipefail
@@ -74,107 +75,59 @@ jobs:
           git clone --depth 1 --branch "${{ env.WAZUH_TAG }}" https://github.com/wazuh/wazuh-docker /tmp/wazuh-docker
           tar czf /tmp/wazuh-multi-node.tgz -C /tmp/wazuh-docker multi-node
 
-      - name: (Optional) Check for local overrides file
-        id: have_overrides
-        shell: bash
-        run: |
-          if [ -f "${{ env.STACK_FILE }}" ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Upload artifacts to remote
+      - name: Upload multi-node bundle to remote
         shell: bash
         run: |
           set -euo pipefail
+          ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }} "mkdir -p '${{ env.REMOTE_BASE }}'"
           scp -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
             /tmp/wazuh-multi-node.tgz \
             ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }}:${{ env.REMOTE_BASE }}/
-          if [ "${{ steps.have_overrides.outputs.present }}" = "true" ]; then
-            scp -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
-              "${{ env.STACK_FILE }}" \
-              ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }}:${{ env.REMOTE_BASE }}/wazuh-swarm.overrides.yml
-          fi
 
-# 1) PREP: create remote dir and unpack official multi-node configs
-      - name: Remote — prepare dir & unpack configs
+      # --- Put YOUR stack-wazuh.yml inside multi-node/ (no edits) ---
+
+      - name: Upload your stack file into multi-node/
         shell: bash
         run: |
-          ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }} '
-            set -euo pipefail
-            REMOTE_BASE="${{ env.REMOTE_BASE }}"
-            mkdir -p "$REMOTE_BASE"
-            cd "$REMOTE_BASE"
-            rm -rf "$REMOTE_BASE/multi-node" || true
-            tar xzf "$REMOTE_BASE/wazuh-multi-node.tgz"
-          '
+          set -euo pipefail
+          test -f "${{ env.STACK_SRC }}" || { echo "Missing ${{ env.STACK_SRC }}"; exit 1; }
+          # Ensure base exists and multi-node is unpacked before copying
+          ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }} \
+            "set -euo pipefail; mkdir -p '${{ env.REMOTE_BASE }}'; cd '${{ env.REMOTE_BASE }}'; rm -rf multi-node; tar xzf wazuh-multi-node.tgz"
+          scp -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${{ env.STACK_SRC }}" \
+            ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }}:${{ env.REMOTE_BASE }}/multi-node/stack-wazuh.yml
 
-      # 2) SWARM: init if inactive (idempotent)
-      - name: Remote — init Docker Swarm if needed
+      # --- Separate SSH blocks for the rest ---
+
+      - name: SSH 1/4 — Ensure Swarm is initialized
         shell: bash
         run: |
-          ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }} '
-            set -euo pipefail
-            if [ "$(docker info -f "{{.Swarm.LocalNodeState}}")" = "inactive" ]; then
-              docker swarm init
-            fi
-          '
+          ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }} \
+            "set -euo pipefail; if [ \"\$(docker info -f '{{.Swarm.LocalNodeState}}')\" = inactive ]; then docker swarm init; fi"
 
-      # 3) HOST SETTINGS: satisfy OpenSearch requirement
-      - name: Remote — set vm.max_map_count=262144
+      - name: SSH 2/4 — Set vm.max_map_count (indexer prerequisite)
         shell: bash
         run: |
-          ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }} '
-            set -euo pipefail
-            echo "vm.max_map_count=262144" | sudo tee /etc/sysctl.d/99-opensearch.conf >/dev/null
-            sudo sysctl -w vm.max_map_count=262144
-          '
+          ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }} \
+            "set -euo pipefail; echo "vm.max_map_count=262144" | sudo tee /etc/sysctl.d/99-opensearch.conf >/dev/null
+             sudo sysctl -w vm.max_map_count=262144"
 
-      # 4) CERTS: run the official generator BEFORE any deploy
-      - name: Remote — generate Wazuh cluster certs
+      - name: SSH 3/4 — Generate cluster certs (run from multi-node/)
         shell: bash
         run: |
-          ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }} '
-            set -euo pipefail
-            REMOTE_BASE="${{ env.REMOTE_BASE }}"
-            cd "$REMOTE_BASE/multi-node"
-            if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE="docker-compose"; fi
-            $COMPOSE -f generate-indexer-certs.yml run --rm generator
-          '
+          ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }} \
+            "set -euo pipefail; cd '${{ env.REMOTE_BASE }}/multi-node'; \
+             if docker compose version >/dev/null 2>&1; then C='docker compose'; else C='docker-compose'; fi; \
+             \$C -f generate-indexer-certs.yml run --rm generator"
 
-      # 5) MERGE: upstream compose + optional overrides -> single file
-      - name: Remote — pre-merge compose files
+      - name: SSH 4/4 — Deploy/Update stack using your stack-wazuh.yml (from multi-node/)
         shell: bash
         run: |
-          ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }} '
-            set -euo pipefail
-            REMOTE_BASE="${{ env.REMOTE_BASE }}"
-            cd "$REMOTE_BASE/multi-node"
-            if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE="docker-compose"; fi
-            OV="-f docker-compose.yml"
-            if [ -f "$REMOTE_BASE/wazuh-swarm.overrides.yml" ]; then
-              OV="$OV -f $REMOTE_BASE/wazuh-swarm.overrides.yml"
-            fi
-            $COMPOSE $OV config > "$REMOTE_BASE/stack.merged.yml"
-          '
-
-      # 6) DEPLOY: Swarm stack (idempotent updates)
-      - name: Remote — deploy/update stack
-        shell: bash
-        run: |
-          ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }} '
-            set -euo pipefail
-            REMOTE_BASE="${{ env.REMOTE_BASE }}"
-            docker stack deploy -c "$REMOTE_BASE/stack.merged.yml" wazuh
-          '
-
-      # 7) POST: show service state
-      - name: Remote — show service state
-        shell: bash
-        run: |
-          ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }} '
-            set -euo pipefail
-            docker stack services wazuh || true
-            docker service ls --format "table {{.Name}}\t{{.Mode}}\t{{.Replicas}}\t{{.Image}}" || true
-          '
+          ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }} \
+            "set -euo pipefail; cd '${{ env.REMOTE_BASE }}/multi-node'; docker stack deploy -c stack-wazuh.yml wazuh && docker stack services wazuh"
