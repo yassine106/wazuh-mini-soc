@@ -1,0 +1,29 @@
+name: CI/CD (Flask + Trivy + Selenium + Swarm)
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+jobs:
+  build_scan_test:
+    runs-on: codebuild-wazuh-runner-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build image (local)
+        run: |
+          cd ./image-security/
+          docker build -t $IMAGE .
+
+      - name: Trivy scan (fail on HIGH/CRITICAL)
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:0.56.0 image \
+              --severity HIGH,CRITICAL \
+              --exit-code 1 \
+              --no-progress \
+              $IMAGE
