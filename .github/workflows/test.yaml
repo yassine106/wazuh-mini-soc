@@ -22,7 +22,7 @@ env:
   WAZUH_TAG: ${{ inputs.wazuh_tag || 'v4.12.0' }}
   STACK_SRC: ${{ inputs.stack_src || 'stack/stack-wazuh.yml' }}
   REMOTE_BASE: /opt/wazuh
-  SWARM_HOST: ${{ vars.SWARM_HOST || '56.228.11.176' }} # move to repo var/secret
+  SWARM_HOST: ${{ vars.SWARM_HOST || '3.92.21.45' }} # move to repo var/secret
   SWARM_USER: ${{ vars.SWARM_USER || 'ec2-user' }}
 
 jobs:
