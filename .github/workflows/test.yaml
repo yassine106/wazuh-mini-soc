@@ -79,7 +79,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }} "mkdir -p '${{ env.REMOTE_BASE }}'"
+          ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }} "sudo mkdir -p '${{ env.REMOTE_BASE }}'"
           scp -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
             /tmp/wazuh-multi-node.tgz \
             ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }}:${{ env.REMOTE_BASE }}/
