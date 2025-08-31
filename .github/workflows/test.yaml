@@ -94,7 +94,7 @@ jobs:
           # Ensure base exists and multi-node is unpacked before copying
           ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
             ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }} \
-            "set -euo pipefail; mkdir -p '${{ env.REMOTE_BASE }}'; cd '${{ env.REMOTE_BASE }}'; rm -rf multi-node; tar xzf wazuh-multi-node.tgz"
+            "set -euo pipefail; mkdir -p '${{ env.REMOTE_BASE }}'; cd '${{ env.REMOTE_BASE }}'; sudo rm -rf multi-node; tar xzf wazuh-multi-node.tgz"
           scp -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
             "${{ env.STACK_SRC }}" \
             ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }}:${{ env.REMOTE_BASE }}/multi-node/stack-wazuh.yml
