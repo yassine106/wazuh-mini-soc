@@ -15,8 +15,8 @@ def driver():
 
 def test_dashboard_reachable(driver):
     driver.get("https://3.92.21.45")
-    WebDriverWait(driver, 10).until(
-    assert "Wazuh" in driver.title)
+    WebDriverWait(driver, 10).until(lambda d: "Wazuh" in d.title)
+    assert "Wazuh" in driver.title
 
 def test_login_form_present(driver):
     driver.get("https://3.92.21.45/app/login")
