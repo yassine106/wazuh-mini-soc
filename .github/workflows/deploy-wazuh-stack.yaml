@@ -154,4 +154,4 @@ jobs:
         uses: nanasess/setup-chromedriver@v2
 
       - name: Run Selenium + API tests
-        run: pytest tests/
+        run: pytest selenium-tests/
