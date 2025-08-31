@@ -6,7 +6,8 @@ on:
     branches: [ main ]
     paths:
       - ".github/workflows/**"
-      - "stack/**"          # where your stack-wazuh.yml lives in THIS repo
+      - "stack/**"
+      - "selenium-tests/**"          # where your stack-wazuh.yml lives in THIS repo
   workflow_dispatch:
     
 env:
@@ -120,3 +121,37 @@ jobs:
           ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
             ${{ env.SWARM_USER }}@${{ env.SWARM_HOST }} \
             "set -euo pipefail; cd '${{ env.REMOTE_BASE }}/multi-node'; docker stack deploy -c stack-wazuh.yml wazuh && docker stack services wazuh"
+
+  test:
+    needs: deploy
+    runs-on: codebuild-wazuh-runner-${{ github.run_id }}-${{ github.run_attempt }}
+
+    env:
+      DASHBOARD_URL: "https://3.92.21.45"
+      API_URL: "https://3.92.21.45:55000"
+      TEST_USER: ${{ secrets.WAZUH_TEST_USER }}
+      TEST_PASS: ${{ secrets.WAZUH_TEST_PASS }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      # Install Python deps (selenium + requests)
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install selenium requests pytest
+
+      # Install Chrome + driver
+      - name: Install Chrome
+        uses: browser-actions/setup-chrome@v1
+      - name: Install ChromeDriver
+        uses: nanasess/setup-chromedriver@v2
+
+      - name: Run Selenium + API tests
+        run: pytest tests/
