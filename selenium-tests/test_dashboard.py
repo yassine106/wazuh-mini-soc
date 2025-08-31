@@ -1,3 +1,4 @@
+import os
 import pytest
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -11,7 +12,7 @@ PASSWORD = os.getenv("TEST_PASS")
 @pytest.fixture(scope="module")
 def driver():
     options = webdriver.ChromeOptions()
-    # options.add_argument("--headless=new")
+    options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--ignore-certificate-errors")  # <-- ignore self-signed SSL
