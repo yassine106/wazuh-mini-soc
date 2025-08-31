@@ -10,7 +10,7 @@ The pipeline builds, tests, and deploys Wazuh components inside an AWS environme
 
 The deployment environment is built entirely on **AWS Cloud** to ensure scalability, isolation, and automation of the CI/CD process. The main components are:
 
-![Architecture](./docs/architecture.png)  
+![Architecture](./docs/aws-architecture.png)  
 <!-- Replace with the correct relative path to your first diagram -->
 
 ### 🔹 GitHub Actions
@@ -106,3 +106,4 @@ Before running the pipeline, ensure you have:
   - Any other required secrets (TLS, Wazuh credentials, etc.)  
 
 ---
+
