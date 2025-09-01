@@ -185,9 +185,6 @@ Before running the pipeline, ensure you have:
   - Docker stack definition for Wazuh deployment  
   - Ansible configuration items  
 - GitHub Secrets:  
-  - `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`  
-  - `SSH_PRIVATE_KEY` (for EC2 connection)  
-  - Any other required secrets (TLS, Wazuh credentials, etc.)  
 
 ## 🚀 Deployment Guide
 
