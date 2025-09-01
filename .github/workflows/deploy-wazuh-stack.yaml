@@ -2,12 +2,12 @@
 name: Wazuh Swarm (remote SSH, multi-node & custom stack file)
 
 on:
-  # push:
-  #   branches: [ main ]
-  #   paths:
-  #     - ".github/workflows/**"
-  #     - "stack/**"
-  #     - "selenium-tests/**"          # where your stack-wazuh.yml lives in THIS repo
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/**"
+      - "stack/**"
+      - "selenium-tests/**"          # where your stack-wazuh.yml lives in THIS repo
   workflow_dispatch:
     
 env:
@@ -20,7 +20,7 @@ jobs:
   deploy:
     # If you have a custom CodeBuild runner label, swap this:
     runs-on: codebuild-wazuh-runner-${{ github.run_id }}-${{ github.run_attempt }}
-    # runs-on: ubuntu-latest
+    
 
     steps:
       - name: Checkout repo
