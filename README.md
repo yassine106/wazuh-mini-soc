@@ -1,4 +1,4 @@
-﻿# 🚀 Wazuh Deployment with CI/CD on AWS
+﻿#  Wazuh Deployment with CI/CD on AWS
 
 This repository contains an automated **CI/CD pipeline** for deploying **Wazuh in a multi-node Docker Swarm cluster** using **GitHub Actions, AWS CodeBuild (self-hosted runners).  
 
@@ -50,7 +50,9 @@ This approach ensures that the build environment is **ephemeral** (destroyed aft
   - Wazuh Indexer
   - Wazuh Dashboard
 - Services are containerized, ensuring **reproducibility** and **scalability**.
-
+```text
+In this case, we implement a simplified version of a DevOps pipeline using AWS to deploy Wazuh through GitHub Actions. The infrastructure in question is within an AWS Virtual Private Cloud (VPC) for network isolation and control. We begin by provisioning a t3.xlarge EC2 instance (4 vCPUs, 8 GB RAM) which satisfies the, at least, recommended requirements for the Wazuh stack to run efficiently. The EC2 instance has a set of Wazuh services in containers and is a member of a Docker Swarm cluster. The instance access is held in a security group for SSH, HTTP/HTTPS and other approved services to control the inbound/outbound traffic and meet the instance requirements. GitHub Actions is used to manage the CI/CD workflow by executing pipelines that run on self-hosted AWS CodeBuild runners. These runners establish an SSH tunnel to the EC2 instance and run Docker and Ansible commands for the Wazuh deployment and configuration that is done on the instance automatically. Fully aligned to modern DevOps, this offers an automated, secure and scalable deployment process.
+```
 ---
 
 ✅ This architecture ensures:  
