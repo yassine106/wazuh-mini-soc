@@ -72,6 +72,10 @@ C:.
 |           ci-cd.yaml       # Workflow for image build & security scan
 |           deploy-wazuh-stack.yaml  # Workflow for Wazuh stack deployment
 |
++---custom_rules
+|       local_decoder.xml
+|       local_rules.xml
+|
 +---docs
 |       aws-architecture.png # AWS architecture diagram
 |       workflow1.jpg        # Workflow 1: Deploy Wazuh
@@ -92,6 +96,11 @@ C:.
 \---stack
         stack-wazuh.yml      # Docker Swarm stack definition for Wazuh
 ```
+
+
+
+
+
 ---
 
 This project delivers a **Mini SOC** based on **Wazuh** deployed via **Docker Swarm**, fully automated through **GitHub Actions**.  

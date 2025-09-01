@@ -1,0 +1,11 @@
+<decoder name="ssh_failed_custom">
+  <program_name>sshd</program_name>
+  <type>failed</type>
+  <regex>Failed password for (invalid user )?(?P<user>\w+) from (?P<srcip>\d+\.\d+\.\d+\.\d+)</regex>
+</decoder>
+
+<decoder name="ssh_accepted_custom">
+  <program_name>sshd</program_name>
+  <type>accepted</type>
+  <regex>Accepted password for (?P<user>\w+) from (?P<srcip>\d+\.\d+\.\d+\.\d+)</regex>
+</decoder>

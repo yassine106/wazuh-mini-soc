@@ -38,6 +38,8 @@ services:
       - ./config/wazuh_indexer_ssl_certs/wazuh.master.pem:/etc/ssl/filebeat.pem
       - ./config/wazuh_indexer_ssl_certs/wazuh.master-key.pem:/etc/ssl/filebeat.key
       - ./config/wazuh_cluster/wazuh_manager.conf:/wazuh-config-mount/etc/ossec.conf
+      - ./custom_rules/local_rules.xml:/var/ossec/etc/rules/local_rules.xml:ro
+      - ./custom_rules/local_decoder.xml:/var/ossec/etc/decoders/local_decoder.xml:ro   
     deploy:
       replicas: 1
       restart_policy:
@@ -72,6 +74,8 @@ services:
       - ./config/wazuh_indexer_ssl_certs/wazuh.worker.pem:/etc/ssl/filebeat.pem
       - ./config/wazuh_indexer_ssl_certs/wazuh.worker-key.pem:/etc/ssl/filebeat.key
       - ./config/wazuh_cluster/wazuh_worker.conf:/wazuh-config-mount/etc/ossec.conf
+      - ./custom_rules/local_rules.xml:/var/ossec/etc/rules/local_rules.xml:ro
+      - ./custom_rules/local_decoder.xml:/var/ossec/etc/decoders/local_decoder.xml:ro
     deploy:
       replicas: 1
       restart_policy:
