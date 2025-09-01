@@ -38,16 +38,15 @@ def test_login_form_present(driver):
 
 def test_login_success(driver):
     driver.get("https://3.92.21.45/app/login")
-    WebDriverWait(driver, 30).until(
+    WebDriverWait(driver, 15).until(
          EC.presence_of_element_located((By.CSS_SELECTOR, '[data-test-subj="user-name"]'))
      )
     
-    driver.find_element(By.CSS_SELECTOR, '[data-test-subj="user-name"]').send_keys(USERNAME)
-    driver.find_element(By.CSS_SELECTOR, '[data-test-subj="password"]').send_keys(PASSWORD)
+    driver.find_element(By.CSS_SELECTOR, '[data-test-subj="user-name"]').send_keys("admin")
+    driver.find_element(By.CSS_SELECTOR, '[data-test-subj="password"]').send_keys("SecretPassword")
     driver.find_element(By.CSS_SELECTOR, '[data-test-subj="submit"]').click()
     # Example: check sidebar element exists after login
     sidebar = WebDriverWait(driver, 30).until(
-        EC.presence_of_element_located((By.XPATH,
-    '//span[text()="Agents summary"]'))
+        EC.presence_of_element_located((By.CSS_SELECTOR, '[data-test-subj="defaultMark"]'))
     )
     assert sidebar
