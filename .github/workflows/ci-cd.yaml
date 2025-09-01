@@ -6,7 +6,7 @@ on:
   push:
     branches: [ main ]
 env:
-  IMAGE: python-app:latest  #
+  IMAGE: python-app:latest     #
 jobs:
   build_scan_test:
     runs-on: codebuild-wazuh-runner-${{ github.run_id }}-${{ github.run_attempt }}
