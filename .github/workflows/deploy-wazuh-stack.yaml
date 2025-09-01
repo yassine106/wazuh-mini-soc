@@ -6,8 +6,8 @@ on:
     branches: [ main ]
     paths:
       - ".github/workflows/**"
-      - "stack/**"
-      - "selenium-tests/**"          # where your stack-wazuh.yml lives in THIS repo
+      - "stack/**"                   # where  your stack-wazuh.yml lives in THIS repo
+      - "selenium-tests/**"          
   workflow_dispatch:
     
 env:
