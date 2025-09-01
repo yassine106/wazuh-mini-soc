@@ -20,20 +20,20 @@ def driver():
     yield driver
     driver.quit()
 
-# def test_dashboard_reachable(driver):
-#     driver.get("https://3.92.21.45")
-#     sleep(2)
-#     WebDriverWait(driver, 10).until(lambda d: "Wazuh" in d.title)
-#     assert "Wazuh" in driver.title
+def test_dashboard_reachable(driver):
+    driver.get("https://3.92.21.45")
+    sleep(2)
+    WebDriverWait(driver, 10).until(lambda d: "Wazuh" in d.title)
+    assert "Wazuh" in driver.title
 
-# def test_login_form_present(driver):
-#     driver.get("https://3.92.21.45/app/login")
-#     user_field = WebDriverWait(driver, 15).until(
-#         EC.presence_of_element_located((By.CSS_SELECTOR, '[data-test-subj="user-name"]'))
-#     )
-#     pass_field = driver.find_element(By.CSS_SELECTOR, '[data-test-subj="password"]')
-#     login_button = driver.find_element(By.CSS_SELECTOR, '[data-test-subj="submit"]')
-#     assert user_field and pass_field and login_button
+def test_login_form_present(driver):
+    driver.get("https://3.92.21.45/app/login")
+    user_field = WebDriverWait(driver, 15).until(
+        EC.presence_of_element_located((By.CSS_SELECTOR, '[data-test-subj="user-name"]'))
+    )
+    pass_field = driver.find_element(By.CSS_SELECTOR, '[data-test-subj="password"]')
+    login_button = driver.find_element(By.CSS_SELECTOR, '[data-test-subj="submit"]')
+    assert user_field and pass_field and login_button
     
 
 def test_login_success(driver):
