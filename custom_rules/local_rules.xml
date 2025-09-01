@@ -1,0 +1,27 @@
+<group name="ssh,">
+  <rule id="100001" level="10">
+    <if_matched_sid>18107</if_matched_sid> <!-- SSH failed login default Wazuh SID -->
+    <same_source_ip />
+    <frequency>3</frequency> <!-- N failed attempts -->
+    <timeframe>60</timeframe> <!-- within 60 seconds -->
+    <description>Multiple SSH failed logins followed by successful login with a new user</description>
+    <mitre>
+      <id>T1110</id> <!-- Brute Force -->
+    </mitre>
+    <options>no_full_log</options>
+    <groups>ssh,</groups>
+    <alert_by_email>yes</alert_by_email>
+  </rule>
+
+  <rule id="100002" level="12">
+    <if_matched_sid>100001</if_matched_sid> <!-- matches previous failed logins -->
+    <same_source_ip />
+    <regex>Accepted password for (?P<user>\w+) from (?P<srcip>\d+\.\d+\.\d+\.\d+)</regex>
+    <description>Successful login after multiple failed attempts with new user</description>
+    <mitre>
+      <id>T1110</id>
+    </mitre>
+    <groups>ssh,</groups>
+    <options>no_full_log</options>
+  </rule>
+</group>
